@@ -1,0 +1,71 @@
+BootStrap: yum
+OSVersion: 7
+MirrorURL: http://mirror.centos.org/centos-%{OSVERSION}/%{OSVERSION}/os/$basearch/
+Include: yum
+
+# uncomment the following to install updates during bootstrapping process
+# UpdateURL: http://mirror.centos.org/centos-%{OSVERSION}/%{OSVERSION}/updates/$basearch/
+
+
+%help
+Ensembl download and install of API and MySQL database on Centos 7.
+Includes automated MySQL database setup with install_ensemble_database.sh
+which calls mysql_setup.sh with its many parameters.
+
+
+%labels
+    Author Justin Lee <justin.lee@jcu.edu.au>, 2018
+    Version v0.1
+
+
+%environment
+    #dbdir=/tmp/$USER/mysql
+
+
+%runscript
+    ensembl_install.sh
+
+
+%files
+    ensembl_install.sh /usr/local/bin/ensembl_install.sh
+    scripts/ensembl-vep_install.sh /usr/local/bin/ensembl-vep_install.sh
+    scripts/install_ensemble_database.sh /usr/local/bin/install_ensemble_database.sh
+    scripts/add_ensembl_mysqlimport_conf.sh /usr/local/bin/add_ensembl_mysqlimport_conf.sh
+    mysql_scripts/mysql_setup.sh /usr/local/bin/mysql_setup.sh
+    mysql_scripts/setup_mysql_server.sh /usr/local/bin/setup_mysql_server.sh
+    mysql_scripts/create_mysql_user.sh /usr/local/bin/create_mysql_user.sh
+    mysql_scripts/create_user_schemas.sh /usr/local/bin/create_user_schemas.sh
+    mysql_scripts/run_sql_on_schema.sh /usr/local/bin/run_sql_on_schema.sh
+    mysql_scripts/insert_data_in_schema.sh /usr/local/bin/insert_data_in_schema.sh
+    tests/ensembl_db_registry_test.pl /usr/local/bin/ensembl_db_registry_test.pl
+    tests/ensembl_human_slice_test.pl /usr/local/bin/ensembl_human_slice_test.pl
+
+
+%post
+    chmod +x /usr/local/bin/ensembl_install.sh
+    chmod +x /usr/local/bin/ensembl-vep_install.sh
+    chmod +x /usr/local/bin/install_ensemble_database.sh
+    chmod +x /usr/local/bin/add_ensembl_mysqlimport_conf.sh
+    chmod +x /usr/local/bin/mysql_setup.sh
+    chmod +x /usr/local/bin/setup_mysql_server.sh
+    chmod +x /usr/local/bin/create_mysql_user.sh
+    chmod +x /usr/local/bin/create_user_schemas.sh
+    chmod +x /usr/local/bin/run_sql_on_schema.sh
+    chmod +x /usr/local/bin/insert_data_in_schema.sh
+    chmod +x /usr/local/bin/ensembl_db_registry_test.pl
+    chmod +x /usr/local/bin/ensembl_human_slice_test.pl
+
+    yum -y install vim-minimal
+    yum -y install which
+    yum -y install wget
+    yum -y install hostname
+    yum -y install psmisc # needed for fuser
+    yum -y install epel-release # need to install the EPEL repo for pwgen
+    yum -y install pwgen # for random password generation
+yum -y install zlib-devel # needed for htslib (VEP)
+    yum -y groupinstall 'Development Tools'
+    yum -y install mariadb mariadb-libs mariadb-server
+    yum -y install perl-DBD-MySQL perl-DBI # needed for Ensembl
+    yum -y install perl-App-cpanminus # for installing Bioperl
+    cpanm Bio::Perl
+
