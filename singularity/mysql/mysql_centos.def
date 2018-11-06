@@ -1,0 +1,169 @@
+BootStrap: yum
+OSVersion: 7
+MirrorURL: http://mirror.centos.org/centos-%{OSVERSION}/%{OSVERSION}/os/$basearch/
+Include: yum
+
+# uncomment the following to install updates during bootstrapping process
+# UpdateURL: http://mirror.centos.org/centos-%{OSVERSION}/%{OSVERSION}/updates/$basearch/
+
+
+%help
+MySQL database installation and setup, control and querying on Centos 7.
+Usage: run <container> [ help|install|status|ping|query ..|stop|start|remove ]
+- 'install' should be done prior to any other run commands or access
+  as it installs the database server, user and schemas, and leaves the
+  database server running.
+- 'status' will return a textual status of the server, while
+- 'ping' returns an exit value of 0 if server is responding, 1 otherwise.
+- 'query ...' can be used to run an SQL query on the database.
+- 'stop' should be done on completion to stop the database server.
+- 'start' can be used to restart the database server after 'stop'.
+- 'remove' stops and removes the database server and its directory.
+
+Note regarding database install location and other configurable parameters:
+    - the database server will be installed in $db_base_dir/$dbdirname
+    - if $db_networking is "True" or "-n" then network connections allowed
+      otherwise connections will only be via local filesystem socket
+    - the database user name is given by $dbusername
+    - the database user my.conf will be installed in $user_base_dir
+    - the schema base directory, containing sub directories defining
+      each schema with sql and data files will be $schema_base_dir
+  These can be over-ridden in the calling environment with:
+    export SINGULARITYENV_<VAR>="<some_value>"
+  For example:
+    export SINGULARITYENV_schema_base_dir=$HOME/mysql_schemas
+  These should be set _prior_ to run 'install', otherwise they will
+  point to the wrong locations!
+
+
+%labels
+    Author Justin Lee <justin.lee@jcu.edu.au>, 2018
+    Version v0.1
+
+
+%environment
+    db_base_dir="${db_base_dir:-${HOME}}"
+    dbdirname="${dbdirname:-mysql_db}"
+    dbusername="${dbusername:-mysql_user}"
+    user_base_dir="${user_base_dir:-$PWD}"
+    schema_base_dir="${schema_base_dir:-$PWD}"
+    if [ "$db_networking" = "True" ]; then
+        db_networking="-n"
+    elif [ "$db_networking" != "-n" ]; then
+        db_networking=""
+    fi
+    # these must be exported to take effect in the runscript
+    export db_base_dir dbdirname dbusername user_base_dir schema_base_dir db_networking
+
+
+%runscript
+    query_usage="[-v] [-D schema] \"sql query\""
+    usage="[ help|install|status|ping|query ..|stop|start|remove ]"
+    if [ $# -lt 1 ] || [ "$1" = "help" ]; then
+        >&2 echo "Usage: $SINGULARITY_NAME run $usage"
+        exit 1
+    fi
+
+    dbdir=$db_base_dir/$dbdirname
+
+    case "$1" in
+    install)
+        install_mysql_database.sh
+        if [ $? -ne 0 ]; then
+            >&2 echo "setup failed during mysql database setup"
+            >&2 echo "see ${dbdirname}_setup.log in $user_base_dir for more details"
+            exit 1
+        fi
+        ;;
+    start)
+        mysqld_safe --defaults-file="$dbdir/my.cnf" --no-auto-restart
+        ;;
+    status)
+        mysqladmin --defaults-file="$dbdir/my.cnf" status
+        ;;
+    ping) # check return value ($?) in caller for ping status
+        mysqladmin --defaults-file="$dbdir/my.cnf" ping > /dev/null 2>&1
+        ;;
+    stop)
+        mysqladmin --defaults-file="$dbdir/my.cnf" shutdown
+        ;;
+    remove)
+        mysqladmin --defaults-file="$dbdir/my.cnf" ping > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            >&2 echo "Shutting down MySQL database server."
+            mysqladmin --defaults-file="$dbdir/my.cnf" shutdown
+            if [ $? -ne 0 ]; then
+                >&2 echo "Error in shutting down server. Aborting."
+                exit 1
+            fi
+        fi
+        if [ -d "$dbdir" ]; then
+            >&2 echo "Deleting contents of $dbdir"
+            rm -rf "$dbdir"/*
+        fi
+        >&2 echo "Done!"
+        ;;
+    query)
+        shift
+        if [ $# -lt 1 ]; then
+            >&2 echo "Usage: $SINGULARITY_NAME run query $query_usage"
+        fi
+        qv=""
+        qdb=""
+        while getopts vD: opt; do
+            case "$opt" in
+            v) qv="-v"
+                ;;
+            D) qdb="-D $OPTARG"
+                ;;
+            \?) # unknown
+                ;;
+            esac
+        done
+        shift $((OPTIND-1)) # remove option params
+        mysql --defaults-file="$user_base_dir/my.cnf" $qv $qdb -e "$@"
+        ;;
+    *)
+        >&2 echo "Usage: $SINGULARITY_NAME run $usage"
+        exit 1
+        ;;
+    esac
+    exit $?
+
+
+%setup
+    # legacy file copy for singularity < 2.3 (expects files in this dir)
+    #touch ${SINGULARITY_ROOTFS}/usr/local/bin/install_mysql_database.sh
+    #touch ${SINGULARITY_ROOTFS}/usr/local/bin/mysql_setup.sh
+    #touch ${SINGULARITY_ROOTFS}/usr/local/bin/setup_mysql_server.sh
+    #touch ${SINGULARITY_ROOTFS}/usr/local/bin/create_mysql_user.sh
+    #touch ${SINGULARITY_ROOTFS}/usr/local/bin/create_user_schemas.sh
+    #touch ${SINGULARITY_ROOTFS}/usr/local/bin/run_sql_on_schema.sh
+    #touch ${SINGULARITY_ROOTFS}/usr/local/bin/insert_data_in_schema.sh
+
+
+%files
+    install_mysql_database.sh /usr/local/bin/install_mysql_database.sh
+    scripts/mysql_setup.sh /usr/local/bin/mysql_setup.sh
+    scripts/setup_mysql_server.sh /usr/local/bin/setup_mysql_server.sh
+    scripts/create_mysql_user.sh /usr/local/bin/create_mysql_user.sh
+    scripts/create_user_schemas.sh /usr/local/bin/create_user_schemas.sh
+    scripts/run_sql_on_schema.sh /usr/local/bin/run_sql_on_schema.sh
+    scripts/insert_data_in_schema.sh /usr/local/bin/insert_data_in_schema.sh
+
+
+%post
+    yum -y install vim-minimal
+    yum -y groupinstall 'Development Tools'
+    yum -y install mariadb mariadb-libs mariadb-server
+    yum -y install hostname
+    yum -y install psmisc # needed for fuser
+    yum -y install epel-release # need to install the EPEL repo for pwgen
+    yum -y install pwgen # for random password generation
+    chmod +x /usr/local/bin/mysql_setup.sh
+    chmod +x /usr/local/bin/setup_mysql_server.sh
+    chmod +x /usr/local/bin/create_mysql_user.sh
+    chmod +x /usr/local/bin/create_user_schemas.sh
+    chmod +x /usr/local/bin/run_sql_on_schema.sh
+    chmod +x /usr/local/bin/insert_data_in_schema.sh
+
